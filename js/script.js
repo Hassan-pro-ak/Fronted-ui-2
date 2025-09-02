@@ -42,10 +42,82 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// Paste button functionality
-pasteBtn.addEventListener('click', async function() {
+// Main fetch video function based on user's working code
+async function fetchVideo() {
+    const url = videoUrlInput.value.trim();
+    
+    if (!url) {
+        showError("❌ Please enter a valid video URL!");
+        return;
+    }
+
+    if (!isValidFacebookUrl(url)) {
+        showError('❌ Invalid Facebook URL! Please valid Facebook video link enter karein.');
+        return;
+    }
+
     try {
-        const text = await navigator.clipboard.readText();
+        // Show loading state
+        setLoadingState(true);
+        hideMessages();
+        showProgress();
+
+        const response = await fetch(API_URL, {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json" 
+            },
+            body: JSON.stringify({ url })
+        });
+
+        const data = await response.json();
+
+        if (data && data.url) {
+            // Complete progress
+            updateProgress(100);
+            
+            // Auto-download
+            const link = document.createElement("a");
+            link.href = data.url;
+            link.download = data.filename || "facebook_video.mp4";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            // Show success message
+            setTimeout(() => {
+                hideProgress();
+                showSuccess();
+                setLoadingState(false);
+                clearInput();
+            }, 1000);
+
+        } else {
+            throw new Error("❌ Could not fetch video.");
+        }
+
+    } catch (err) {
+        console.error('Download error:', err);
+        setLoadingState(false);
+        hideProgress();
+        
+        let errorMsg = '⚠️ Error connecting to server.';
+        
+        if (err.message.includes('404')) {
+            errorMsg = '❌ Video nahi mila. URL check karein!';
+        } else if (err.message.includes('403')) {
+            errorMsg = '❌ Video private hai ya access nahi hai!';
+        } else if (err.message.includes('network')) {
+            errorMsg = '⚠️ Internet connection check karein!';
+        }
+        
+        showError(errorMsg);
+    }
+}
+
+// Paste URL function based on user's working code
+function pasteURL() {
+    navigator.clipboard.readText().then(text => {
         videoUrlInput.value = text;
         videoUrlInput.focus();
         
@@ -54,33 +126,20 @@ pasteBtn.addEventListener('click', async function() {
         setTimeout(() => {
             pasteBtn.style.background = 'rgba(255, 255, 255, 0.2)';
         }, 500);
-    } catch (err) {
+    }).catch(err => {
         console.error('Failed to read clipboard contents: ', err);
-        showError('Clipboard access nahi mil paya. Manually paste karein.');
-    }
-});
+        showError('❌ Clipboard access nahi mil paya. Manually paste karein.');
+    });
+}
 
-// Download button functionality
-downloadBtn.addEventListener('click', function() {
-    const url = videoUrlInput.value.trim();
-    
-    if (!url) {
-        showError('Please Facebook video ka URL enter karein!');
-        return;
-    }
-    
-    if (!isValidFacebookUrl(url)) {
-        showError('Invalid Facebook URL! Please valid Facebook video link enter karein.');
-        return;
-    }
-    
-    downloadVideo(url);
-});
+// Event listeners for buttons
+downloadBtn.addEventListener('click', fetchVideo);
+pasteBtn.addEventListener('click', pasteURL);
 
 // Enter key support for input
 videoUrlInput.addEventListener('keypress', function(e) {
     if (e.key === 'Enter') {
-        downloadBtn.click();
+        fetchVideo();
     }
 });
 
@@ -102,100 +161,6 @@ function isValidFacebookUrl(url) {
     return facebookRegex.test(url);
 }
 
-// Download video function
-async function downloadVideo(url) {
-    try {
-        // Show loading state
-        setLoadingState(true);
-        hideMessages();
-        
-        // Prepare request data
-        const requestData = {
-            url: url,
-            format: 'mp4' // Default format
-        };
-        
-        // Make API request
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify(requestData)
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        if (data.success && data.downloadUrl) {
-            // Show progress
-            showProgress();
-            
-            // Simulate progress for better UX
-            let progress = 0;
-            const progressInterval = setInterval(() => {
-                progress += Math.random() * 15;
-                if (progress > 90) progress = 90;
-                updateProgress(progress);
-            }, 200);
-            
-            // Download the video
-            const downloadResponse = await fetch(data.downloadUrl);
-            
-            if (!downloadResponse.ok) {
-                throw new Error('Download failed');
-            }
-            
-            const blob = await downloadResponse.blob();
-            
-            // Complete progress
-            clearInterval(progressInterval);
-            updateProgress(100);
-            
-            // Create download link
-            const downloadUrl = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = downloadUrl;
-            a.download = data.filename || `facebook_video_${Date.now()}.mp4`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(downloadUrl);
-            
-            // Show success message
-            setTimeout(() => {
-                hideProgress();
-                showSuccess();
-                setLoadingState(false);
-            }, 1000);
-            
-        } else {
-            throw new Error(data.message || 'Download failed');
-        }
-        
-    } catch (error) {
-        console.error('Download error:', error);
-        setLoadingState(false);
-        hideProgress();
-        
-        let errorMsg = 'Kuch galat ho gaya. Please try again!';
-        
-        if (error.message.includes('404')) {
-            errorMsg = 'Video nahi mila. URL check karein!';
-        } else if (error.message.includes('403')) {
-            errorMsg = 'Video private hai ya access nahi hai!';
-        } else if (error.message.includes('network')) {
-            errorMsg = 'Internet connection check karein!';
-        }
-        
-        showError(errorMsg);
-    }
-}
-
 // UI State Management Functions
 function setLoadingState(loading) {
     if (loading) {
@@ -214,6 +179,17 @@ function setLoadingState(loading) {
 function showProgress() {
     downloadProgress.style.display = 'block';
     updateProgress(0);
+    
+    // Simulate progress for better UX
+    let progress = 0;
+    const progressInterval = setInterval(() => {
+        progress += Math.random() * 15;
+        if (progress > 90) {
+            progress = 90;
+            clearInterval(progressInterval);
+        }
+        updateProgress(progress);
+    }, 200);
 }
 
 function hideProgress() {
@@ -245,19 +221,10 @@ function hideMessages() {
     downloadProgress.style.display = 'none';
 }
 
-// Additional Features
-// Auto-clear input after successful download
 function clearInput() {
     videoUrlInput.value = '';
     videoUrlInput.style.borderColor = 'rgba(255, 255, 255, 0.2)';
 }
-
-// Add success callback to clear input
-const originalShowSuccess = showSuccess;
-showSuccess = function() {
-    originalShowSuccess();
-    setTimeout(clearInput, 2000);
-};
 
 // Keyboard shortcuts
 document.addEventListener('keydown', function(e) {
@@ -266,7 +233,7 @@ document.addEventListener('keydown', function(e) {
         e.preventDefault();
         videoUrlInput.focus();
         setTimeout(() => {
-            pasteBtn.click();
+            pasteURL();
         }, 100);
     }
     
@@ -328,30 +295,4 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
-
-// Performance optimization - debounce input validation
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
-
-const debouncedValidation = debounce(function(url) {
-    if (url && !isValidFacebookUrl(url)) {
-        videoUrlInput.style.borderColor = '#e74c3c';
-    } else {
-        videoUrlInput.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-    }
-}, 300);
-
-videoUrlInput.addEventListener('input', function() {
-    hideMessages();
-    debouncedValidation(this.value.trim());
-});
 
