@@ -1,5 +1,5 @@
 // DOM Elements
-const videoUrlInput = document.getElementById('videoUrl');
+const videoUrlInput = document.getElementById('videoURL');
 const pasteBtn = document.getElementById('pasteBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 const downloadProgress = document.getElementById('downloadProgress');
@@ -7,6 +7,8 @@ const successMessage = document.getElementById('successMessage');
 const errorMessage = document.getElementById('errorMessage');
 const errorText = document.getElementById('errorText');
 const progressFill = document.querySelector('.progress-fill');
+const resultBox = document.getElementById('result');
+const downloadOptions = document.getElementById('downloadOptions');
 
 // API Configuration
 const API_URL = 'https://video-downloader-production-1235.up.railway.app/api/download';
@@ -47,7 +49,7 @@ async function fetchVideo() {
     const url = videoUrlInput.value.trim();
     
     if (!url) {
-        showError("❌ Please enter a valid video URL!");
+        alert("❌ Please enter a valid video URL!");
         return;
     }
 
@@ -72,26 +74,37 @@ async function fetchVideo() {
 
         const data = await response.json();
 
-        if (data && data.url) {
-            // Complete progress
-            updateProgress(100);
+        if (data && data.videos && data.videos.length > 0) {
+            // Hide progress and show result box
+            hideProgress();
+            setLoadingState(false);
             
-            // Auto-download
-            const link = document.createElement("a");
-            link.href = data.url;
-            link.download = data.filename || "facebook_video.mp4";
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
-            // Show success message
-            setTimeout(() => {
-                hideProgress();
-                showSuccess();
-                setLoadingState(false);
-                clearInput();
-            }, 1000);
-
+            // Clear previous options
+            downloadOptions.innerHTML = "";
+            
+            // Create download options for each video quality
+            data.videos.forEach((video, index) => {
+                const videoOption = document.createElement('div');
+                videoOption.className = 'video-option';
+                
+                videoOption.innerHTML = `
+                    <div class="video-info">
+                        <div class="video-quality">${video.quality || 'HD'} Quality</div>
+                        <div class="video-size">${video.size || 'Unknown size'}</div>
+                    </div>
+                    <button class="download-option-btn" onclick="downloadVideo('${video.url}', '${video.quality || 'video'}')">
+                        <i class="fas fa-download"></i>
+                        Download
+                    </button>
+                `;
+                
+                downloadOptions.appendChild(videoOption);
+            });
+            
+            // Show result box
+            resultBox.classList.remove("hidden");
+            resultBox.style.display = 'flex';
+            
         } else {
             throw new Error("❌ Could not fetch video.");
         }
@@ -112,6 +125,32 @@ async function fetchVideo() {
         }
         
         showError(errorMsg);
+    }
+}
+
+// Download individual video function
+function downloadVideo(videoUrl, quality) {
+    try {
+        // Create download link
+        const link = document.createElement("a");
+        link.href = videoUrl;
+        link.download = `facebook_video_${quality}_${Date.now()}.mp4`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Show success message
+        showSuccess();
+        
+        // Clear input after successful download
+        setTimeout(() => {
+            clearInput();
+            hideResultBox();
+        }, 3000);
+        
+    } catch (error) {
+        console.error('Download error:', error);
+        showError('❌ Download mein problem hui. Please try again!');
     }
 }
 
@@ -146,6 +185,7 @@ videoUrlInput.addEventListener('keypress', function(e) {
 // Input validation on typing
 videoUrlInput.addEventListener('input', function() {
     hideMessages();
+    hideResultBox();
     const url = this.value.trim();
     
     if (url && !isValidFacebookUrl(url)) {
@@ -221,6 +261,11 @@ function hideMessages() {
     downloadProgress.style.display = 'none';
 }
 
+function hideResultBox() {
+    resultBox.classList.add('hidden');
+    resultBox.style.display = 'none';
+}
+
 function clearInput() {
     videoUrlInput.value = '';
     videoUrlInput.style.borderColor = 'rgba(255, 255, 255, 0.2)';
@@ -237,10 +282,11 @@ document.addEventListener('keydown', function(e) {
         }, 100);
     }
     
-    // Escape to clear input
+    // Escape to clear input and hide results
     if (e.key === 'Escape') {
         clearInput();
         hideMessages();
+        hideResultBox();
         videoUrlInput.blur();
     }
 });
